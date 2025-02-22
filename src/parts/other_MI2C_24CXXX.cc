@@ -48,7 +48,7 @@ static PCWProp pcwprop[10] = {{PCW_COMBO, "P1 - A0"},
                               {PCW_LABEL, "P4 - VSS,GND"},
                               {PCW_COMBO, "P5 - SDA"},
                               {PCW_COMBO, "P6 - SCL"},
-                              {PCW_LABEL, "P7 - WP      GND"},
+                              {PCW_LABEL, "P7 - WP,GND"},
                               {PCW_LABEL, "P8 - VCC,+5V"},
                               {PCW_COMBO, "kbits"},
                               {PCW_END, ""}};
@@ -219,7 +219,7 @@ void cpart_MI2C_24CXXX::ConfigurePropertiesWindow(void) {
     SetPCWComboWithPinNames("combo5", input_pins[3]);
     SetPCWComboWithPinNames("combo6", input_pins[4]);
 
-    SpareParts.WPropCmd("combo9", PWA_COMBOSETITEMS, "4,512,");
+    SpareParts.WPropCmd("combo9", PWA_COMBOSETITEMS, "4,16,512,"); // kjc: added 16k
     SpareParts.WPropCmd("combo9", PWA_COMBOSETTEXT, std::to_string(kbits).c_str());
 }
 
@@ -247,7 +247,7 @@ void cpart_MI2C_24CXXX::ReadPropertiesWindow(void) {
 
 void cpart_MI2C_24CXXX::PreProcess(void) {
     const picpin* ppins = SpareParts.GetPinsValues();
-    unsigned char addr = 0x50;
+    unsigned char addr = 0x50; // NOTE: 0x50 --> 0xA0, same for all 24cxxx (16k, 1M, etc.)
 
     if (input_pins[0]) {
         if (ppins[input_pins[0] - 1].value)
@@ -273,8 +273,33 @@ void cpart_MI2C_24CXXX::Process(void) {
     const picpin* ppins = SpareParts.GetPinsValues();
 
     if ((input_pins[3] > 0) && (input_pins[4] > 0))
-        SpareParts.SetPullupBus(input_pins[3] - 1,
-                                mi2c_io(&mi2c, ppins[input_pins[4] - 1].value, ppins[input_pins[3] - 1].value));
+    {
+        // kjc: new block. Handle to/from master transitions
+        // original code:
+        //     SpareParts.SetPullupBus(input_pins[3] - 1,
+        //           mi2c_io(&mi2c, ppins[input_pins[4] - 1].value, ppins[input_pins[3] - 1].value));
+        //
+#define I2C_TO_MASTER 0x80
+        //
+        unsigned char ret = mi2c_io(&mi2c, ppins[input_pins[4] - 1].value, ppins[input_pins[3] - 1].value);
+        if (ret & I2C_TO_MASTER)
+        {
+            // TO_MASTER: output the bit
+            //printf("######## other_mi2c: To master: bit=%d\n", ret & 1);
+            SpareParts.SetPullupBus(input_pins[3] - 1, ret & 1);
+            //SpareParts.WritePin(input_pins[3] - 1, ret & 1); // FIXME: seems to work w/o this!
+        }
+        else if (prev_to_master != 0)
+        {
+            // TO_MASTER = 0 (TO_MASTER -> FROM_MASTER)
+            //printf("######## other_mi2c: reset pullup\n");
+            SpareParts.ResetPullupBus(input_pins[3] - 1);
+            // FIXME: SpareParts.SetPullupBus(input_pins[3] - 1, 1);
+            SpareParts.WritePin(input_pins[3] - 1, 1);  // FIXME: is this needed?
+        }
+        prev_to_master = (ret & I2C_TO_MASTER) != 0;
+        // kjc: end of new block
+    }
 }
 
 void cpart_MI2C_24CXXX::OnMouseButtonPress(unsigned int inputId, unsigned int button, unsigned int x, unsigned int y,

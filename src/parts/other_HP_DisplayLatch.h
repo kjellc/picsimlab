@@ -4,7 +4,7 @@
 
    ########################################################################
 
-   Copyright (c) : 2019-2024  Luis Claudio Gambôa Lopes <lcgamboa@yahoo.com>
+   Copyright (c) : 2021-2023  Luis Claudio Gambôa Lopes <lcgamboa@yahoo.com>
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -23,42 +23,49 @@
    For e-mail suggestions :  lcgamboa@yahoo.com
    ######################################################################## */
 
-#ifndef PART_MI2C_24CXXX_H
-#define PART_MI2C_24CXXX_H
+#ifndef PART_HP_DISPLAYLATCH_H
+#define PART_HP_DISPLAYLATCH_H
 
+//zzz??? #include <lxrad.h>
+
+//zzz #include "../devices/io_74xx573.h"
 #include "../lib/part.h"
 
-#include "../devices/mi2c_24CXXX.h"
+#define PART_HP_DISPLAYLATCH_Name "HP DisplayLatch"
 
-#define PART_MI2C_24CXXX_Name "MEM 24CXXX"
-
-class cpart_MI2C_24CXXX : public part {
+class cpart_HP_DisplayLatch : public part {
 public:
     std::string GetAboutInfo(void) override { return "L.C. Gamboa \n <lcgamboa@yahoo.com>"; };
-    cpart_MI2C_24CXXX(const unsigned x, const unsigned y, const char* name, const char* type, board* pboard_,
-                      const int id_);
-    ~cpart_MI2C_24CXXX(void);
+    cpart_HP_DisplayLatch(const unsigned x, const unsigned y, const char* name, const char* type, board* pboard_, const int id_);
+    ~cpart_HP_DisplayLatch(void);
     void DrawOutput(const unsigned int index) override;
     void PreProcess(void) override;
     void Process(void) override;
-    void OnMouseButtonPress(unsigned int inputId, unsigned int button, unsigned int x, unsigned int y,
-                            unsigned int state) override;
+    void PostProcess(void) override;
+    std::string GetPictureFileName(void) override { return "../Common/IC20.svg"; };
+    std::string GetMapFile(void) override { return "../Common/IC20.map"; };
     void ConfigurePropertiesWindow(void) override;
-    void filedialog_EvOnClose(int retId) override;
-    void ReadPropertiesWindow(void) override;
+    void ReadPropertiesWindow() override;
     std::string WritePreferences(void) override;
     void ReadPreferences(std::string value) override;
     unsigned short GetInputId(char* name) override;
     unsigned short GetOutputId(char* name) override;
 
 private:
-    unsigned char input_pins[5];
-    mi2c_t mi2c;
-    int kbits;
-    char f_mi2c_name[200];
-    char f_mi2c_tmp_name[200];
-    FILE* f_mi2c;
-    bool prev_to_master = false;  // kjc: new - prev state of I2C_TO_MASTER
+    unsigned char input_pins[10];
+    unsigned char output_pins[23];
+    //zzz unsigned long output_pins_alm[23];
+    //zzz long mcount;
+    //zzz int JUMPSTEPS_;
+    unsigned char prev_strobe = 0;
+    unsigned char prev_rcd = 1;
+    unsigned char anode_latch = 0;
+    int active_column = 0;
+    int next_column = 0;
+    int mantissa_sign = 0;
+    //zzz io_74xx573_t lt8;
+    //zzz unsigned short _ret;
+    //zzz ???? lxFont font;
 };
 
-#endif /* PART_MI2C_24CXXX_H */
+#endif /* HP_DISPLAYLATCH_H */

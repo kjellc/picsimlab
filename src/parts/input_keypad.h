@@ -36,6 +36,7 @@ public:
     cpart_keypad(const unsigned x, const unsigned y, const char* name, const char* type, board* pboard_, const int id_);
     ~cpart_keypad(void);
     void DrawOutput(const unsigned int index) override;
+    void PreProcess(void) override; // kjc
     void Process(void) override;
     std::string GetPictureFileName(void) override;
     std::string GetMapFile(void) override;
@@ -54,11 +55,12 @@ public:
 private:
     void ChangeType(unsigned char tp);
     void RegisterRemoteControl(void) override;
-    unsigned char type;
-    unsigned char pull;
-    unsigned char output_pins[8];
+    unsigned char type = 0;
+    unsigned char pull = 1;
+    unsigned char output_pins[32];
     unsigned char keys[4][4];
     unsigned char keys2[2][5];
+    int active_key_index = -1;  //kjc
 };
 
 #endif /* PART_KEYPAD_H */

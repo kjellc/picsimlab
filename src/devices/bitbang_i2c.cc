@@ -32,6 +32,7 @@
 
 #define ACK 0
 #define NACK 1
+#define I2C_TO_MASTER 0x80
 
 #define dprintf \
     if (1) {    \
@@ -63,12 +64,14 @@ void bitbang_i2c_init(bitbang_i2c_t* i2c, const unsigned char addr, const unsign
     bitbang_i2c_rst(i2c);
 }
 
-unsigned char bitbang_i2c_io(bitbang_i2c_t* i2c, const unsigned char scl, const unsigned char sda) {
+unsigned char bitbang_i2c_io(bitbang_i2c_t* i2c, const unsigned char scl, unsigned char sda) {
+    sda = (sda != 0);    // sda may be 2 or more!
     if ((i2c->sdao == sda) && (i2c->sclo == scl)) {
         // No edge, return the last value
         // dprintf ("bitbang_i2c %2x nret = %i\n", i2c->addr >> 1, i2c->ret);
         return i2c->ret;
     }
+    dprintf("---------------------------->i2c process: %d/%d %d-%d\n", i2c->bit, (int)i2c->byte, scl, sda);
 
     if ((i2c->sdao == 1) && (sda == 0) && (scl == 1) && (i2c->sclo == 1)) {
         // start
@@ -76,7 +79,7 @@ unsigned char bitbang_i2c_io(bitbang_i2c_t* i2c, const unsigned char scl, const 
         i2c->byte = 0;
         i2c->datab = 0;
         i2c->ret = 0;
-        i2c->data_reading = 0;
+        i2c->data_reading = 0;   // Master writing
         dprintf("---->i2c start %02x!\n", i2c->addr >> 1);
         i2c->status = I2C_START;
     }
@@ -86,48 +89,69 @@ unsigned char bitbang_i2c_io(bitbang_i2c_t* i2c, const unsigned char scl, const 
         i2c->bit = 0xFF;
         i2c->byte = 0xFF;
         i2c->ret = 0;
-        i2c->data_reading = 0;
+        i2c->data_reading = 0;   // Master writing
         dprintf("---> i2c stop %02x!\n", i2c->addr >> 1);
         i2c->status = I2C_STOP;
     }
 
+    // Raising SCL  __| , read bit to byte (bit 0-7), incl ACK bit (8)
     if ((i2c->bit < 9) && (i2c->sclo == 0) && (scl == 1)) {
         // data in
         if (i2c->bit < 8) {
             i2c->datab |= (sda << (7 - i2c->bit));
         }
+        // kjc: FIXME, NEEDED?  i2c->ret = sda & 1;
         // dprintf ("recv %02x %i %i (%02X)\n", i2c->addr >> 1, i2c->bit, i2c->ret, i2c->datab);
         i2c->bit++;
     }
 
+    // Falling SCL |__ and master writing: remove ACK for TO_MASTER response
+    if ((i2c->bit == 0) && (i2c->sclo == 1) && (scl == 0) && !i2c->data_reading) {
+        i2c->ret = 0;
+    }
+
+    // Falling SCL |__ and master reading: output byte (bit 0-7), incl ACK (8)
     if ((i2c->bit < 9) && (i2c->sclo == 1) && (scl == 0) && i2c->data_reading) {
         // data out
         if (i2c->bit < 8) {
-            i2c->ret = ((i2c->datas & (1 << (7 - i2c->bit))) > 0);
+            i2c->ret = ((i2c->datas & (1 << (7 - i2c->bit))) > 0) | I2C_TO_MASTER;  // bit to master
             // dprintf ("send %02x %i %i (%02X)\n", i2c->addr >> 1, i2c->bit, i2c->ret, i2c->datas);
         } else {
-            i2c->ret = ACK;
+            i2c->ret = ACK;  // ACK INPUT (from master)
         }
     }
 
     if (i2c->bit == 8) {
+        unsigned char ret = 0;
         if (i2c->byte == 0)  // ADDR
         {
             if ((i2c->datab & i2c->addr_mask) == i2c->addr) {
                 // valid address
-                i2c->ret = ACK;
+                dprintf ("send %02x addres ACK (client), RW=%d\n", i2c->addr >> 1, i2c->addr & 1);
+                ret = ACK;
             } else {
                 // invalid address
-                i2c->ret = NACK;
+                dprintf ("send %02x addres NACK (client)\n", i2c->addr >> 1);
+                ret = NACK;
             }
         } else if (!i2c->data_reading) {
             // data
-            i2c->ret = ACK;
+            dprintf ("send %02x data ACK (client)\n", i2c->addr >> 1);
+            ret = ACK;
+        }
+        // Keep previous ret until SCL 1 --> 0
+        if (i2c->sclo == 1 && scl == 0) //
+        {
+            // time to send ACK or NACK?
+            if (!i2c->data_reading)   // master writing?
+                ret |= I2C_TO_MASTER;
+            i2c->ret = ret;  // start ACK-send after SCL pulse
         }
     }
 
+    // NEXT BIT SCL 0 -> 1 during ACK
     if (i2c->bit == 9) {
-        dprintf("bitbang_i2c %02x data %02X\n", i2c->addr >> 1, i2c->datab);
+        dprintf("bitbang_i2c %02x data rx after ACK %02X\n", i2c->addr >> 1, i2c->datab);  // data received
 
         if (i2c->byte == 0)  // ADDR
         {
@@ -153,10 +177,10 @@ unsigned char bitbang_i2c_io(bitbang_i2c_t* i2c, const unsigned char scl, const 
                 i2c->bit = 0xFF;
                 i2c->byte = 0xFF;
             }
-        } else if (!i2c->data_reading)  // data
+        } else if (!i2c->data_reading)  // data byte
         {
             dprintf("bitbang_i2c %2x received OK %02X\n", i2c->addr >> 1, i2c->datab);
-            i2c->datar = i2c->datab;
+            i2c->datar = i2c->datab;	// returned byte
             i2c->bit = 0;
             i2c->datab = 0;
             i2c->byte++;
@@ -183,9 +207,10 @@ unsigned char bitbang_i2c_get_status(bitbang_i2c_t* i2c) {
     return status;
 }
 
+// send one byte
 void bitbang_i2c_send(bitbang_i2c_t* i2c, const unsigned char data) {
     i2c->datas = data;
-    dprintf("bitbang_i2c %2x data to send 0x%02x \n", i2c->addr >> 1, data);
+    //dprintf("bitbang_i2c %2x data to send 0x%02x \n", i2c->addr >> 1, data);
 }
 
 // Controller

@@ -1,5 +1,11 @@
 # Build folder
 build_all/
+picsimlab_win64/
+dev_w64/
+
+# misc
+*.bin
+## *.pcf
 
 # Other files generated after compiling
 *.o

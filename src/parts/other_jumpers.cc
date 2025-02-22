@@ -80,6 +80,9 @@ enum {
     O_L16
 };
 
+// jtype
+enum { JWT_M = 1, JWT_F = 2, JWT_F_M = 3 };
+
 static PCWProp pcwprop[35] = {
     {PCW_COMBO, "Input Type"}, {PCW_COMBO, "1-I0"},        {PCW_COMBO, "2-I1"},  {PCW_COMBO, "3-I2"},
     {PCW_COMBO, "4-I3"},       {PCW_COMBO, "5-I4"},        {PCW_COMBO, "6-I5"},  {PCW_COMBO, "7-I6"},
@@ -147,7 +150,7 @@ cpart_Jumpers::cpart_Jumpers(const unsigned x, const unsigned y, const char* nam
     output_pins[14] = SpareParts.RegisterIOpin(jname + "OE");
     output_pins[15] = SpareParts.RegisterIOpin(jname + "OF");
 
-    jtype = JWT_MM;
+    jtype = (JWT_M << 4) + JWT_M;  // i+o
 
     mcount = 0;
     memset(output_pins_alm, 0, 16 * sizeof(unsigned long));
@@ -173,7 +176,7 @@ void cpart_Jumpers::DrawOutput(const unsigned int i) {
     switch (output[i].id) {
         case O_L1 ... O_L16:
             c = ppins[output_pins[output[i].id - O_L1] - 1].oavalue;
-            SpareParts.CanvasCmd({.cmd = CC_SETCOLOR, .SetColor{c, c, 0}});
+            SpareParts.CanvasCmd({.cmd = CC_SETCOLOR, .SetColor{c, c, 0}}); // yellow
             SpareParts.CanvasCmd(
                 {.cmd = CC_RECTANGLE,
                  .Rectangle{1, output[i].x1, output[i].y1, output[i].x2 - output[i].x1, output[i].y2 - output[i].y1}});
@@ -344,13 +347,31 @@ void cpart_Jumpers::ReadPreferences(std::string value) {
            &inp[12], &inp[13], &inp[14], &inp[15], &outp[0], &outp[1], &outp[2], &outp[3], &outp[4], &outp[5], &outp[6],
            &outp[7], &outp[8], &outp[9], &outp[10], &outp[11], &outp[12], &outp[13], &outp[14], &outp[15], &ntype, &c);
 
+    // kjc: translate old jtype bitmask to new style enums
+    if (ntype < 4)
+    {
+        if (ntype == JWT_FF)
+            ntype = (JWT_F << 4) + JWT_F;
+        else if (ntype == JWT_FM)
+            ntype = (JWT_F << 4) + JWT_M;
+        else if (ntype == JWT_MF)
+            ntype = (JWT_M << 4) + JWT_F;
+        else
+            ntype = (JWT_M << 4) + JWT_M;
+    }
     ChangeType(ntype);
 
-    if ((ntype & 0x02)) {
+    if ((ntype >> 4) == JWT_F || (ntype >> 4) == JWT_F_M)
+    {
         for (int i = 0; i < 16; i++) {
             input_pins[i] = inp[i];
+            if ((ntype >> 4) == JWT_F_M && i >= 8)
+                break;  // upper pins are M
         }
-    } else {
+    }
+
+    if ((ntype >> 4) == JWT_M || (ntype >> 4) == JWT_F_M)
+    {
         if ((input_pins[0] != inp[0]) || (ID != (c - 'A'))) {
             char buff[2];
 
@@ -364,18 +385,22 @@ void cpart_Jumpers::ReadPreferences(std::string value) {
                 countID = ID + 1;
             }
 
+            // always unregister all inputs (some/all may have been M pins)
             for (int i = 0; i < 16; i++) {
                 SpareParts.UnregisterIOpin(input_pins[i]);
             }
 
-            input_pins[0] = SpareParts.RegisterIOpin(jname + "I0", inp[0], PD_IN);
-            input_pins[1] = SpareParts.RegisterIOpin(jname + "I1", inp[1], PD_IN);
-            input_pins[2] = SpareParts.RegisterIOpin(jname + "I2", inp[2], PD_IN);
-            input_pins[3] = SpareParts.RegisterIOpin(jname + "I3", inp[3], PD_IN);
-            input_pins[4] = SpareParts.RegisterIOpin(jname + "I4", inp[4], PD_IN);
-            input_pins[5] = SpareParts.RegisterIOpin(jname + "I5", inp[5], PD_IN);
-            input_pins[6] = SpareParts.RegisterIOpin(jname + "I6", inp[6], PD_IN);
-            input_pins[7] = SpareParts.RegisterIOpin(jname + "I7", inp[7], PD_IN);
+            if ((ntype >> 4) != JWT_F_M)
+            {
+                input_pins[0] = SpareParts.RegisterIOpin(jname + "I0", inp[0], PD_IN);
+                input_pins[1] = SpareParts.RegisterIOpin(jname + "I1", inp[1], PD_IN);
+                input_pins[2] = SpareParts.RegisterIOpin(jname + "I2", inp[2], PD_IN);
+                input_pins[3] = SpareParts.RegisterIOpin(jname + "I3", inp[3], PD_IN);
+                input_pins[4] = SpareParts.RegisterIOpin(jname + "I4", inp[4], PD_IN);
+                input_pins[5] = SpareParts.RegisterIOpin(jname + "I5", inp[5], PD_IN);
+                input_pins[6] = SpareParts.RegisterIOpin(jname + "I6", inp[6], PD_IN);
+                input_pins[7] = SpareParts.RegisterIOpin(jname + "I7", inp[7], PD_IN);
+            }
             input_pins[8] = SpareParts.RegisterIOpin(jname + "I8", inp[8], PD_IN);
             input_pins[9] = SpareParts.RegisterIOpin(jname + "I9", inp[9], PD_IN);
             input_pins[10] = SpareParts.RegisterIOpin(jname + "IA", inp[10], PD_IN);
@@ -387,11 +412,17 @@ void cpart_Jumpers::ReadPreferences(std::string value) {
         }
     }
 
-    if (ntype & 0x01) {
+    if ((ntype & 15) == JWT_F || (ntype & 15) == JWT_F_M)
+    {
         for (int i = 0; i < 16; i++) {
             output_pins[i] = outp[i];
+            if ((ntype & 15) == JWT_F_M && i >= 8)
+                break;  // upper pins are M
         }
-    } else {
+    }
+
+    if ((ntype & 15) == JWT_M || (ntype & 15) == JWT_F_M)
+    {
         if ((output_pins[0] != outp[0]) || (ID != (c - 'A'))) {
             char buff[2];
 
@@ -405,18 +436,22 @@ void cpart_Jumpers::ReadPreferences(std::string value) {
                 countID = ID + 1;
             }
 
+            // always unregister all outputs (some/all may have been M pins)
             for (int i = 0; i < 16; i++) {
                 SpareParts.UnregisterIOpin(output_pins[i]);
             }
 
-            output_pins[0] = SpareParts.RegisterIOpin(jname + "O0", outp[0]);
-            output_pins[1] = SpareParts.RegisterIOpin(jname + "O1", outp[1]);
-            output_pins[2] = SpareParts.RegisterIOpin(jname + "O2", outp[2]);
-            output_pins[3] = SpareParts.RegisterIOpin(jname + "O3", outp[3]);
-            output_pins[4] = SpareParts.RegisterIOpin(jname + "O4", outp[4]);
-            output_pins[5] = SpareParts.RegisterIOpin(jname + "O5", outp[5]);
-            output_pins[6] = SpareParts.RegisterIOpin(jname + "O6", outp[6]);
-            output_pins[7] = SpareParts.RegisterIOpin(jname + "O7", outp[7]);
+            if ((ntype & 15) != JWT_F_M)
+            {
+                output_pins[0] = SpareParts.RegisterIOpin(jname + "O0", outp[0]);
+                output_pins[1] = SpareParts.RegisterIOpin(jname + "O1", outp[1]);
+                output_pins[2] = SpareParts.RegisterIOpin(jname + "O2", outp[2]);
+                output_pins[3] = SpareParts.RegisterIOpin(jname + "O3", outp[3]);
+                output_pins[4] = SpareParts.RegisterIOpin(jname + "O4", outp[4]);
+                output_pins[5] = SpareParts.RegisterIOpin(jname + "O5", outp[5]);
+                output_pins[6] = SpareParts.RegisterIOpin(jname + "O6", outp[6]);
+                output_pins[7] = SpareParts.RegisterIOpin(jname + "O7", outp[7]);
+            }
             output_pins[8] = SpareParts.RegisterIOpin(jname + "O8", outp[8]);
             output_pins[9] = SpareParts.RegisterIOpin(jname + "O9", outp[9]);
             output_pins[10] = SpareParts.RegisterIOpin(jname + "OA", outp[10]);
@@ -444,43 +479,52 @@ void cpart_Jumpers::RegisterRemoteControl(void) {
 void cpart_Jumpers::ConfigurePropertiesWindow(void) {
     char childname[256];
 
-    SpareParts.WPropCmd("combo1", PWA_COMBOSETITEMS, "F,M,");
+    SpareParts.WPropCmd("combo1", PWA_COMBOSETITEMS, "F,M,F_M,");
     SpareParts.WPropCmd("combo1", PWA_COMBOPROPEV, "1");
-    SpareParts.WPropCmd("combo18", PWA_COMBOSETITEMS, "F,M,");
+    SpareParts.WPropCmd("combo18", PWA_COMBOSETITEMS, "F,M,F_M,");
     SpareParts.WPropCmd("combo18", PWA_COMBOPROPEV, "1");
 
-    if (jtype & 0x02)
+    // inputs
+    if ((jtype >> 4) == JWT_F_M)
+        SpareParts.WPropCmd("combo1", PWA_COMBOSETTEXT, "F_M");
+    else if ((jtype >> 4) == JWT_F)
         SpareParts.WPropCmd("combo1", PWA_COMBOSETTEXT, "F");
     else
         SpareParts.WPropCmd("combo1", PWA_COMBOSETTEXT, "M");
 
-    if (jtype & 0x01)
+    // outputs
+    if ((jtype & 15) == JWT_F_M)
+        SpareParts.WPropCmd("combo18", PWA_COMBOSETTEXT, "F_M");
+    else if ((jtype & 15) == JWT_F)
         SpareParts.WPropCmd("combo18", PWA_COMBOSETTEXT, "F");
     else
         SpareParts.WPropCmd("combo18", PWA_COMBOSETTEXT, "M");
 
     for (int i = 0; i < 16; i++) {
-        // input
+        // input,  combo2...combo17
         snprintf(childname, 256, "combo%i", i + 2);
 
         SetPCWComboWithPinNames(childname, input_pins[i]);
 
-        if (jtype & 0x02) {
+        if ((jtype >> 4) == JWT_F_M)
+            // lower half F, upper half M
+            SpareParts.WPropCmd(childname, PWA_SETENABLE, (i < 8) ? "1" : "0");
+        else if ((jtype >> 4) == JWT_F)
             SpareParts.WPropCmd(childname, PWA_SETENABLE, "1");
-        } else {
+        else
             SpareParts.WPropCmd(childname, PWA_SETENABLE, "0");
-        }
 
-        // output
+        // output, combo19...combo34
         snprintf(childname, 256, "combo%i", i + 19);
 
         SetPCWComboWithPinNames(childname, output_pins[i]);
 
-        if (jtype & 0x01) {
+        if ((jtype & 15) == JWT_F_M)
+            SpareParts.WPropCmd(childname, PWA_SETENABLE, (i < 8) ? "1" : "0");
+        else if ((jtype & 15) == JWT_F)
             SpareParts.WPropCmd(childname, PWA_SETENABLE, "1");
-        } else {
+        else
             SpareParts.WPropCmd(childname, PWA_SETENABLE, "0");
-        }
     }
 }
 
@@ -489,26 +533,31 @@ void cpart_Jumpers::ReadPropertiesWindow(void) {
 
     char buff[64];
     SpareParts.WPropCmd("combo1", PWA_COMBOGETTEXT, NULL, buff);
-
-    if (strcmp(buff, "M"))
-        jtype |= 0x02;
+    jtype &= 0x0f;
+    if (!strcmp(buff, "F_M"))
+        jtype |= JWT_F_M << 4;
+    if (!strcmp(buff, "F"))
+        jtype |= JWT_F << 4;
     else
-        jtype &= ~0x02;
+        jtype |= JWT_M << 4;
 
     SpareParts.WPropCmd("combo18", PWA_COMBOGETTEXT, NULL, buff);
-    if (strcmp(buff, "M"))
-        jtype |= 0x01;
+    jtype &= 0xf0;
+    if (!strcmp(buff, "F_M"))
+        jtype |= JWT_F_M;
+    if (!strcmp(buff, "F"))
+        jtype |= JWT_F;
     else
-        jtype &= ~0x01;
+        jtype |= JWT_M;
 
     for (int i = 0; i < 16; i++) {
         // input
-        if (jtype & 0x02) {
+        if ((jtype >> 4) == JWT_F || ((jtype >> 4) == JWT_F_M && i < 8)) {
             snprintf(childname, 256, "combo%i", i + 2);
             input_pins[i] = GetPWCComboSelectedPin(childname);
         }
         // output
-        if (jtype & 0x01) {
+        if ((jtype & 15) == JWT_F || ((jtype & 15) == JWT_F_M && i < 8)) {
             snprintf(childname, 256, "combo%i", i + 19);
             output_pins[i] = GetPWCComboSelectedPin(childname);
         }
@@ -525,22 +574,36 @@ void cpart_Jumpers::Process(void) {
     int i;
 
     const picpin* ppins = SpareParts.GetPinsValues();
+    unsigned char output_orig[16];
+    unsigned char output_set[16];
 
+    // kjc: implement AND on inputs
     for (i = 0; i < 16; i++) {
-        if (input_pins[i] && output_pins[i]) {
-            if (ppins[input_pins[i] - 1].value != ppins[output_pins[i] - 1].value) {
-                if (jtype & 0x01) {
-                    SpareParts.SetPin(output_pins[i], ppins[input_pins[i] - 1].value);
-                } else {
-                    SpareParts.WritePin(output_pins[i], ppins[input_pins[i] - 1].value);
+        output_orig[i] = ppins[output_pins[i] - 1].value;
+        output_set[i] = 1;  // assume high
+    }
+    for (i = 0; i < 16; i++) {
+        if (ppins[input_pins[i] - 1].value == 0) // AND the inputs: One low -> set low
+        {
+            output_set[i] = 0;
+            // find other outputs with same output_pin
+            for (int j = 0; j < 16; j++)
+            {
+                if (output_pins[i] == output_pins[j])
+                {
+                    output_set[j] = 0;    // this output should also be 0
                 }
             }
-            /*
-            if (ppins[input_pins[i] - 1].avalue != ppins[output_pins[i] - 1].avalue)
-            {
-                SpareParts.WritePinA (output_pins[i], ppins[input_pins[i] - 1].avalue);
+        }
+    }
+    for (i = 0; i < 16; i++) {
+        if (output_orig[i] != output_set[i]) {
+            if ((jtype & 15) == JWT_F || ((jtype & 15) == JWT_F_M && i < 8)) {
+                SpareParts.SetPin(output_pins[i], output_set[i]);
             }
-             */
+            if ((jtype & 15) == JWT_M || ((jtype & 15) == JWT_F_M && i >= 8)) {
+                SpareParts.WritePin(output_pins[i], output_set[i]);
+            }
         }
     }
 
@@ -576,21 +639,24 @@ void cpart_Jumpers::ChangeType(unsigned char ntype) {
     if (jtype == ntype)
         return;
 
-    if (!(jtype & 0x02) && (ntype & 0x02)) {
-        for (int i = 0; i < 16; i++) {
-            SpareParts.UnregisterIOpin(input_pins[i]);
-            input_pins[i] = 0;
-        }
+    // always unregister all inputs (some/all may have been M pins)
+    for (int i = 0; i < 16; i++) {
+        SpareParts.UnregisterIOpin(input_pins[i]);
+        input_pins[i] = 0;
     }
-    if ((jtype & 0x02) && !(ntype & 0x02)) {
-        input_pins[0] = SpareParts.RegisterIOpin(jname + "I0", 0, PD_IN);
-        input_pins[1] = SpareParts.RegisterIOpin(jname + "I1", 0, PD_IN);
-        input_pins[2] = SpareParts.RegisterIOpin(jname + "I2", 0, PD_IN);
-        input_pins[3] = SpareParts.RegisterIOpin(jname + "I3", 0, PD_IN);
-        input_pins[4] = SpareParts.RegisterIOpin(jname + "I4", 0, PD_IN);
-        input_pins[5] = SpareParts.RegisterIOpin(jname + "I5", 0, PD_IN);
-        input_pins[6] = SpareParts.RegisterIOpin(jname + "I6", 0, PD_IN);
-        input_pins[7] = SpareParts.RegisterIOpin(jname + "I7", 0, PD_IN);
+    if ((ntype >> 4) == JWT_M || (ntype >> 4) == JWT_F_M)
+    {
+        if ((ntype >> 4) != JWT_F_M)
+        {
+            input_pins[0] = SpareParts.RegisterIOpin(jname + "I0", 0, PD_IN);
+            input_pins[1] = SpareParts.RegisterIOpin(jname + "I1", 0, PD_IN);
+            input_pins[2] = SpareParts.RegisterIOpin(jname + "I2", 0, PD_IN);
+            input_pins[3] = SpareParts.RegisterIOpin(jname + "I3", 0, PD_IN);
+            input_pins[4] = SpareParts.RegisterIOpin(jname + "I4", 0, PD_IN);
+            input_pins[5] = SpareParts.RegisterIOpin(jname + "I5", 0, PD_IN);
+            input_pins[6] = SpareParts.RegisterIOpin(jname + "I6", 0, PD_IN);
+            input_pins[7] = SpareParts.RegisterIOpin(jname + "I7", 0, PD_IN);
+        }
         input_pins[8] = SpareParts.RegisterIOpin(jname + "I8", 0, PD_IN);
         input_pins[9] = SpareParts.RegisterIOpin(jname + "I9", 0, PD_IN);
         input_pins[10] = SpareParts.RegisterIOpin(jname + "IA", 0, PD_IN);
@@ -601,22 +667,25 @@ void cpart_Jumpers::ChangeType(unsigned char ntype) {
         input_pins[15] = SpareParts.RegisterIOpin(jname + "IF", 0, PD_IN);
     }
 
-    if (!(jtype & 0x01) && (ntype & 0x01)) {
-        for (int i = 0; i < 16; i++) {
-            SpareParts.UnregisterIOpin(output_pins[i]);
-            output_pins[i] = 0;
-        }
+    // always unregister all outputs (some/all may have been M pins)
+    for (int i = 0; i < 16; i++) {
+        SpareParts.UnregisterIOpin(output_pins[i]);
+        output_pins[i] = 0;
     }
 
-    if ((jtype & 0x01) && !(ntype & 0x01)) {
-        output_pins[0] = SpareParts.RegisterIOpin(jname + "O0");
-        output_pins[1] = SpareParts.RegisterIOpin(jname + "O1");
-        output_pins[2] = SpareParts.RegisterIOpin(jname + "O2");
-        output_pins[3] = SpareParts.RegisterIOpin(jname + "O3");
-        output_pins[4] = SpareParts.RegisterIOpin(jname + "O4");
-        output_pins[5] = SpareParts.RegisterIOpin(jname + "O5");
-        output_pins[6] = SpareParts.RegisterIOpin(jname + "O6");
-        output_pins[7] = SpareParts.RegisterIOpin(jname + "O7");
+    if ((ntype & 15) == JWT_M || (ntype & 15) == JWT_F_M)
+    {
+        if ((ntype & 15) != JWT_F_M)
+        {
+            output_pins[0] = SpareParts.RegisterIOpin(jname + "O0");
+            output_pins[1] = SpareParts.RegisterIOpin(jname + "O1");
+            output_pins[2] = SpareParts.RegisterIOpin(jname + "O2");
+            output_pins[3] = SpareParts.RegisterIOpin(jname + "O3");
+            output_pins[4] = SpareParts.RegisterIOpin(jname + "O4");
+            output_pins[5] = SpareParts.RegisterIOpin(jname + "O5");
+            output_pins[6] = SpareParts.RegisterIOpin(jname + "O6");
+            output_pins[7] = SpareParts.RegisterIOpin(jname + "O7");
+        }
         output_pins[8] = SpareParts.RegisterIOpin(jname + "O8");
         output_pins[9] = SpareParts.RegisterIOpin(jname + "O9");
         output_pins[10] = SpareParts.RegisterIOpin(jname + "OA");
@@ -634,18 +703,21 @@ void cpart_Jumpers::ComboChange(const char* controlname, std::string value) {
     unsigned char ntype = jtype;
 
     if (!strcmp(controlname, "combo1")) {
-        if (!value.compare("F")) {
-            ntype |= 0x02;
-        } else {
-            ntype &= ~0x02;
-        }
-
+        ntype &= 0x0f;
+        if (!value.compare("F_M"))
+            ntype |= JWT_F_M << 4;
+        if (!value.compare("F"))
+            ntype |= JWT_F << 4;
+        else
+            ntype |= JWT_M << 4;
     } else {
-        if (!value.compare("F")) {
-            ntype |= 0x01;
-        } else {
-            ntype &= ~0x01;
-        }
+        ntype &= 0xf0;
+        if (!value.compare("F_M"))
+            ntype |= JWT_F_M;
+        if (!value.compare("F"))
+            ntype |= JWT_F;
+        else
+            ntype |= JWT_M;
     }
     ChangeType(ntype);
 }

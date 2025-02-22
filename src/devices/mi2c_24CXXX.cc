@@ -54,10 +54,10 @@ void mi2c_init_null(mi2c_t* mem) {
 void mi2c_init(mi2c_t* mem, int sizekbits) {
     mem->SIZE = sizekbits * 128;  //*1024/8
 
-    if (mem->SIZE < 4096)
-        mem->ADDRB = 1;
+    if (mem->SIZE < 4096) // 4 kbyte (32 kbits) devices uses 1 address byte
+        mem->ADDRB = 1;   // 1 address byte
     else
-        mem->ADDRB = 2;
+        mem->ADDRB = 2;   // 2 address bytes
 
     dprintf("mi2c init size=(%i) ADDRB=(%i)\n", sizekbits, mem->ADDRB);
 
@@ -84,9 +84,16 @@ unsigned char mi2c_io(mi2c_t* mem, unsigned char scl, unsigned char sda) {
     unsigned char ret = bitbang_i2c_io(&mem->bb_i2c, scl, sda);
 
     switch (bitbang_i2c_get_status(&mem->bb_i2c)) {
+        case I2C_START:
+            dprintf("i2c start\n");
+            break;
+        case I2C_STOP:
+            dprintf("i2c stop\n");
+            break;
+
         case I2C_ADDR:
             if ((mem->bb_i2c.datar & 0x01) == 0x00) {
-                if (mem->ADDRB == 2)
+                if (mem->ADDRB == 2)  // 2 address bytes?
                     mem->addr = 0;
                 else {
                     mem->addr = ((mem->bb_i2c.datar & 0x0E) << 7);
@@ -98,11 +105,11 @@ unsigned char mi2c_io(mi2c_t* mem, unsigned char scl, unsigned char sda) {
             if (mem->ADDRB == 2) {
                 if (mem->bb_i2c.byte == 2) {
                     mem->addr |= (mem->bb_i2c.datar << 8);
-                    dprintf("----> mem add = %02X\n", mem->addr);
+                    dprintf("----> mem addr1 = %02X\n", mem->addr);
                 }
                 if (mem->bb_i2c.byte == 3) {
                     mem->addr |= mem->bb_i2c.datar;
-                    dprintf("----> mem add = %02X\n", mem->addr);
+                    dprintf("----> mem addr2 = %04X\n", mem->addr);
                 }
             } else {
                 if (mem->bb_i2c.byte == 2) {

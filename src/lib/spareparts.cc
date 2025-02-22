@@ -100,12 +100,14 @@ void CSpareParts::ClearPinAlias(void) {
 void CSpareParts::ResetPullupBus(unsigned char pin) {
     if (pin < IOINIT) {
         pullup_bus[pin]++;  // count i2c devices in bus
+        //printf("=== ResetPullup %d = %d\n", pin, pullup_bus[pin]);
     }
 }
 
 void CSpareParts::SetPullupBus(unsigned char pin, unsigned char value) {
     if (pin < IOINIT) {
         pullup_bus[pin] &= value;
+        //printf("=== SetPullup %d = %d (&= %d)\n", pin, pullup_bus[pin], value);
     }
 }
 
