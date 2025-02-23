@@ -5,7 +5,9 @@ dev_w64/
 
 # misc
 *.bin
-## *.pcf
+*.pcf
+!HP67.pcf
+!PICcalcM.pcf
 
 # Other files generated after compiling
 *.o
