@@ -26,6 +26,10 @@
 #ifndef BITBANG_I2C
 #define BITBANG_I2C
 
+// return masks
+#define I2C_TO_MASTER 0x80
+#define I2C_BAD_ADDRESS 0x40
+
 class board;
 
 // operation status

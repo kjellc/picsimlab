@@ -279,14 +279,19 @@ void cpart_MI2C_24CXXX::Process(void) {
         //     SpareParts.SetPullupBus(input_pins[3] - 1,
         //           mi2c_io(&mi2c, ppins[input_pins[4] - 1].value, ppins[input_pins[3] - 1].value));
         //
-#define I2C_TO_MASTER 0x80
         //
         unsigned char ret = mi2c_io(&mi2c, ppins[input_pins[4] - 1].value, ppins[input_pins[3] - 1].value);
+
+        if (ret & I2C_BAD_ADDRESS)
+        {
+            return;   // bad address, do nothing
+        }
+
         if (ret & I2C_TO_MASTER)
         {
             // TO_MASTER: output the bit
             //printf("######## other_mi2c: To master: bit=%d\n", ret & 1);
-            SpareParts.SetPullupBus(input_pins[3] - 1, ret & 1);
+            SpareParts.SetPullupBus(input_pins[3] - 1, ret & 1);  // 1 if ACK, 0 if NACK
             //SpareParts.WritePin(input_pins[3] - 1, ret & 1); // FIXME: seems to work w/o this!
         }
         else if (prev_to_master != 0)
@@ -294,8 +299,8 @@ void cpart_MI2C_24CXXX::Process(void) {
             // TO_MASTER = 0 (TO_MASTER -> FROM_MASTER)
             //printf("######## other_mi2c: reset pullup\n");
             SpareParts.ResetPullupBus(input_pins[3] - 1);
-            // FIXME: SpareParts.SetPullupBus(input_pins[3] - 1, 1);
-            SpareParts.WritePin(input_pins[3] - 1, 1);  // FIXME: is this needed?
+            //SpareParts.SetPullupBus(input_pins[3] - 1, 1);
+            SpareParts.WritePin(input_pins[3] - 1, 1);  // set back to high
         }
         prev_to_master = (ret & I2C_TO_MASTER) != 0;
         // kjc: end of new block

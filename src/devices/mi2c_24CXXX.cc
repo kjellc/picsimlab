@@ -83,6 +83,9 @@ void mi2c_end(mi2c_t* mem) {
 unsigned char mi2c_io(mi2c_t* mem, unsigned char scl, unsigned char sda) {
     unsigned char ret = bitbang_i2c_io(&mem->bb_i2c, scl, sda);
 
+    if (ret & I2C_BAD_ADDRESS)
+        return ret;    // bad address, do nothing
+
     switch (bitbang_i2c_get_status(&mem->bb_i2c)) {
         case I2C_START:
             dprintf("i2c start\n");

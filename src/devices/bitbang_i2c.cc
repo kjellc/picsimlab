@@ -32,7 +32,6 @@
 
 #define ACK 0
 #define NACK 1
-#define I2C_TO_MASTER 0x80
 
 #define dprintf \
     if (1) {    \
@@ -132,7 +131,7 @@ unsigned char bitbang_i2c_io(bitbang_i2c_t* i2c, const unsigned char scl, unsign
             } else {
                 // invalid address
                 dprintf ("send %02x addres NACK (client)\n", i2c->addr >> 1);
-                ret = NACK;
+                ret = NACK | I2C_BAD_ADDRESS;
             }
         } else if (!i2c->data_reading) {
             // data
