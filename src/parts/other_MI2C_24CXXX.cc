@@ -375,7 +375,7 @@ void cpart_MI2C_24CXXX::filedialog_EvOnClose(int retId) {
     if (retId) {
         int type;
         SpareParts.WindowCmd(PW_MAIN, "filedialog1", PWA_FILEDIALOGGETTYPE, NULL, &type);
-        if ((type == (PFD_OPEN | PFD_CHANGE_DIR))) {
+        if ((type == (PFD_SAVE | PFD_CHANGE_DIR))) {
             char buff[200];
             SpareParts.WindowCmd(PW_MAIN, "filedialog1", PWA_FILEDIALOGGETFNAME, NULL, buff);
             if (PICSimLab.SystemCmd(PSC_FILEEXISTS, buff)) {
