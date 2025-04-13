@@ -27,6 +27,7 @@
 
 #include <errno.h>
 #include <string.h>
+#include <deque>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -34,6 +35,11 @@
     if (1) {    \
     } else      \
         printf
+
+// Buffer for incoming characters until possible to send to device
+// Needed since the port speed may be faster than the uart/bitbang speed
+// Not allowed to grow more than 50k
+std::deque<unsigned char> uart_rx_buffer;
 
 void uart_rst(uart_t* sr) {
     bitbang_uart_rst(&sr->bb_uart);
@@ -69,9 +75,24 @@ unsigned char uart_io(uart_t* sr, const unsigned char rx) {
         return 1;
     }
 
+    // kjc: buffer incoming data from port
+    unsigned char data;
+    if (serial_port_rec(sr->serialfd, &data)) {
+        if (uart_rx_buffer.size() >= 50000) {
+            dprintf("Uart: Input buffer overflow, dropping data\n");
+        }
+        else {
+            uart_rx_buffer.push_back(data);
+        }
+    }
+
     if (!bitbang_uart_transmitting(&sr->bb_uart)) {
         unsigned char data;
-        if (serial_port_rec(sr->serialfd, &data)) {
+        // kjc: empty buffer if not empty
+        if (uart_rx_buffer.size())
+        {
+            data = uart_rx_buffer.front();
+            uart_rx_buffer.pop_front();
             bitbang_uart_send(&sr->bb_uart, data);
         }
     }

@@ -54,9 +54,9 @@ const char pin_values[10][10] = {
 };
  */
 
-static PCWProp pcwprop[7] = {
+static PCWProp pcwprop[8] = {
     {PCW_LABEL, "P1 - GND,GND"}, {PCW_COMBO, "P2 - RX"}, {PCW_COMBO, "P3 - TX"}, {PCW_LABEL, "P4 - VCC,+5V"},
-    {PCW_COMBO, "Port"},         {PCW_COMBO, "Speed"},   {PCW_END, ""}};
+    {PCW_COMBO, "Port"}, {PCW_COMBO, "Port Speed"}, {PCW_COMBO, "Uart Speed"}, {PCW_END, ""}};
 
 cpart_UART::cpart_UART(const unsigned x, const unsigned y, const char* name, const char* type, board* pboard_,
                        const int id_)
@@ -71,7 +71,8 @@ cpart_UART::cpart_UART(const unsigned x, const unsigned y, const char* name, con
 
     uart_name[0] = '*';
     uart_name[1] = 0;
-    uart_speed = 9600;
+    uart_speed = 1200;
+    port_speed = 19200;
 
     SetPCWProperties(pcwprop);
 
@@ -121,7 +122,7 @@ void cpart_UART::DrawOutput(const unsigned int i) {
             SpareParts.CanvasCmd({.cmd = CC_SETFGCOLOR, .SetFgColor{255, 255, 255}});
             SpareParts.CanvasCmd(
                 {.cmd = CC_ROTATEDTEXT,
-                 .RotatedText{("port:" + std::string(uart_name) + "   speed:" + std::to_string(uart_speed)).c_str(),
+                 .RotatedText{("port:" + std::string(uart_name) + "   speed:" + std::to_string(port_speed)).c_str(),
                               output[i].x1, output[i].y1, 0}});
             break;
         default:
@@ -179,17 +180,18 @@ unsigned short cpart_UART::GetOutputId(char* name) {
 std::string cpart_UART::WritePreferences(void) {
     char prefs[256];
 
-    sprintf(prefs, "%hhu,%hhu,%u,%s", pins[0], pins[1], uart_speed, uart_name);
+    sprintf(prefs, "%hhu,%hhu,%u,%u,%s", pins[0], pins[1], port_speed, uart_speed, uart_name);
 
     return prefs;
 }
 
 void cpart_UART::ReadPreferences(std::string value) {
-    sscanf(value.c_str(), "%hhu,%hhu,%u,%s", &pins[0], &pins[1], &uart_speed, uart_name);
+    sscanf(value.c_str(), "%hhu,%hhu,%u,%u,%s", &pins[0], &pins[1], &port_speed, &uart_speed, uart_name);
 
     Reset();
     if (uart_name[0] != '*') {
-        uart_set_port(&sr, uart_name, uart_speed);
+        uart_set_port(&sr, uart_name, port_speed);
+        bitbang_uart_set_speed(&sr.bb_uart, uart_speed); // lower speed to CPU (max 4800?)
     }
 }
 
@@ -209,7 +211,10 @@ void cpart_UART::ConfigurePropertiesWindow(void) {
     }
 
     SpareParts.WPropCmd("combo6", PWA_COMBOSETITEMS, "1200,2400,4800,9600,19200,38400,57600,115200,");
-    SpareParts.WPropCmd("combo6", PWA_COMBOSETTEXT, std::to_string(uart_speed).c_str());
+    SpareParts.WPropCmd("combo6", PWA_COMBOSETTEXT, std::to_string(port_speed).c_str());
+
+    SpareParts.WPropCmd("combo7", PWA_COMBOSETITEMS, "300,600,1200,2400,4800,9600,19200,");
+    SpareParts.WPropCmd("combo7", PWA_COMBOSETTEXT, std::to_string(uart_speed).c_str());
 }
 
 void cpart_UART::ReadPropertiesWindow(void) {
@@ -221,9 +226,13 @@ void cpart_UART::ReadPropertiesWindow(void) {
     strncpy(uart_name, buff, 200);
 
     SpareParts.WPropCmd("combo6", PWA_COMBOGETTEXT, NULL, buff);
+    port_speed = std::stoi(buff);
+
+    SpareParts.WPropCmd("combo7", PWA_COMBOGETTEXT, NULL, buff);
     uart_speed = std::stoi(buff);
 
-    uart_set_port(&sr, uart_name, uart_speed);
+    uart_set_port(&sr, uart_name, port_speed);
+    bitbang_uart_set_speed(&sr.bb_uart, uart_speed); // lower speed to CPU (max 4800?)
 }
 
 void cpart_UART::PreProcess(void) {
@@ -245,6 +254,7 @@ void cpart_UART::Process(void) {
     ret = uart_io(&sr, val);
 
     if (_ret != ret) {
+        //zzz printf("sp=%d\n", ret);
         SpareParts.SetPin(pins[1], ret);
     }
     _ret = ret;
