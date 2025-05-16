@@ -30,6 +30,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+// FIXME: Use if (0) to enable
+//  serial comm log to ~/AppData/Roaming/picsimlab/picsimlab_log0.txt
 #define dprintf \
     if (1) {    \
     } else      \
